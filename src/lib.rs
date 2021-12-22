@@ -97,7 +97,7 @@
     unreachable_patterns,
     unreachable_pub,
     unsafe_code,
-    unsafe_op_in_unsafe_fn,
+    // unsafe_op_in_unsafe_fn,
     unstable_features,
     unstable_name_collisions,
     unsupported_calling_conventions,
@@ -398,4 +398,41 @@ pub fn spawn(script: &str, args: &Vec<String>, options: &ScriptOptions) -> Scrip
 /// ````
 pub fn run_or_exit(script: &str, args: &Vec<String>, options: &ScriptOptions) -> (String, String) {
     runner::run_or_exit(script, &args, &options)
+}
+
+/// Invokes the provided script content and returns an async process handle.
+///
+/// # Arguments
+///
+/// * `script` - The script content
+/// * `args` - The script command line arguments
+/// * `options` - Options provided to the script runner
+///
+/// # Example
+///
+/// ````
+/// use run_script::ScriptOptions;
+///
+/// fn main() {
+///     let options = ScriptOptions::new();
+///
+///     let args = vec![];
+///
+///     let child = run_script::spawn(
+///         r#"
+///         echo "Directory Info:"
+///         dir
+///         "#,
+///         &args,
+///         &options
+///     ).unwrap();
+/// }
+/// ````
+#[cfg(feature = "async")]
+pub fn spawn_async(
+    script: &str,
+    args: &Vec<String>,
+    options: &ScriptOptions,
+) -> Result<async_process::Child, ScriptError> {
+    runner::spawn_async(script, &args, &options)
 }

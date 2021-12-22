@@ -282,3 +282,102 @@ pub(crate) fn run_or_exit(
         }
     }
 }
+
+#[cfg(feature = "async")]
+fn create_command_builder_async(
+    command_string: &str,
+    args: &Vec<String>,
+    options: &ScriptOptions,
+) -> async_process::Command {
+    let mut command = async_process::Command::new(&command_string);
+
+    if options.env_vars.is_some() {
+        command.envs(options.env_vars.as_ref().unwrap());
+    }
+
+    for arg in args.iter() {
+        command.arg(arg);
+    }
+
+    match options.input_redirection {
+        IoOptions::Null => command.stdin(async_process::Stdio::null()),
+        IoOptions::Inherit => command.stdin(async_process::Stdio::inherit()),
+        IoOptions::Pipe => command.stdin(async_process::Stdio::piped()),
+    };
+
+    match options.output_redirection {
+        IoOptions::Null => command
+            .stdout(async_process::Stdio::null())
+            .stderr(async_process::Stdio::null()),
+        IoOptions::Inherit => command
+            .stdout(async_process::Stdio::inherit())
+            .stderr(async_process::Stdio::inherit()),
+        IoOptions::Pipe => command
+            .stdout(async_process::Stdio::piped())
+            .stderr(async_process::Stdio::piped()),
+    };
+
+    command
+}
+
+#[cfg(feature = "async")]
+fn spawn_script_async(
+    script: &str,
+    args: &Vec<String>,
+    options: &ScriptOptions,
+) -> Result<(async_process::Child, String), ScriptError> {
+    match modify_script(&script.to_string(), &options) {
+        Ok(updated_script) => match create_script_file(&updated_script) {
+            Ok(file) => {
+                let command = match options.runner {
+                    Some(ref value) => value,
+                    None => {
+                        if cfg!(windows) {
+                            "cmd.exe"
+                        } else {
+                            "sh"
+                        }
+                    }
+                };
+
+                let mut all_args = if cfg!(windows) {
+                    let win_file = fix_path(&file);
+                    vec!["/C".to_string(), win_file]
+                } else {
+                    vec![file.to_string()]
+                };
+
+                all_args.extend(args.iter().cloned());
+
+                let mut command = create_command_builder_async(&command, &all_args, &options);
+
+                let result = command.spawn();
+
+                match result {
+                    Ok(child) => Ok((child, file.clone())),
+                    Err(error) => {
+                        fsio::file::delete_ignore_error(&file);
+
+                        Err(ScriptError::IOError(error))
+                    }
+                }
+            }
+            Err(error) => Err(ScriptError::FsIOError(error)),
+        },
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(feature = "async")]
+pub fn spawn_async(
+    script: &str,
+    args: &Vec<String>,
+    options: &ScriptOptions,
+) -> Result<async_process::Child, ScriptError> {
+    let result = spawn_script_async(script, &args, &options);
+
+    match result {
+        Ok((child, _)) => Ok(child),
+        Err(error) => Err(error),
+    }
+}
